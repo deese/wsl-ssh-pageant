@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: src/go.mod
+
+      - name: Generate assets
+        working-directory: src
+        run: go run github.com/go-bindata/go-bindata/go-bindata -pkg main -o assets.go assets/
+
+      - name: Build amd64
+        working-directory: src
+        env:
+          GOARCH: amd64
+          GOOS: windows
+        run: |
+          go build -o ../build/wsl-ssh-pageant-amd64.exe .
+          go build -ldflags "-H=windowsgui" -o ../build/wsl-ssh-pageant-amd64-gui.exe .
+
+      - name: Create release archives
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build/wsl-ssh-pageant-amd64.exe, Readme.md, LICENSE -DestinationPath wsl-ssh-pageant-amd64.zip
+          Compress-Archive -Path build/wsl-ssh-pageant-amd64-gui.exe, Readme.md, LICENSE, install.ps1 -DestinationPath wsl-ssh-pageant-amd64-gui.zip
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            build/wsl-ssh-pageant-amd64.exe
+            build/wsl-ssh-pageant-amd64-gui.exe
+            wsl-ssh-pageant-amd64.zip
+            wsl-ssh-pageant-amd64-gui.zip

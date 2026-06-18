@@ -1,73 +1,174 @@
 # wsl-ssh-pageant
 
-[![Build Status](https://benpye.visualstudio.com/benpye/_apis/build/status/benpye.wsl-ssh-pageant?branchName=golang)](https://benpye.visualstudio.com/benpye/_build/latest?definitionId=1&branchName=golang)
+[![Release](https://github.com/deese/wsl-ssh-pageant/actions/workflows/release.yml/badge.svg)](https://github.com/deese/wsl-ssh-pageant/actions/workflows/release.yml)
 
-## Why
-I use a Yubikey to store a GPG key pair and I like to use this key pair as my SSH key too. GPG on Windows exposes a Pageant style SSH agent and I wanted a way to use this key within WSL. I have rewritten this in Go as it means the release is a single simple binary, and I like Go.
+Bridges a Pageant-compatible SSH agent (PuTTY, gpg4win) to WSL and the native Windows OpenSSH client via a Unix socket or a named pipe.
 
-## How to use with WSL
+## Download
 
-1. On the Windows side start Pageant (or compatible agent such as gpg4win).
+Grab the latest release on the [releases page](https://github.com/deese/wsl-ssh-pageant/releases).
 
-2. Run `wsl-ssh-pageant.exe --wsl C:\wsl-ssh-pageant\ssh-agent.sock` (or any other path, max ~100 characters)
+Two binaries are provided:
 
-3. In WSL export the `SSH_AUTH_SOCK` environment variable to point at the socket, for example, if you have `ssh-agent.sock` in `C:\wsl-ssh-pageant`
+| Binary | Description |
+|--------|-------------|
+| `wsl-ssh-pageant-amd64.exe` | Console binary. Opens a terminal window when double-clicked. |
+| `wsl-ssh-pageant-amd64-gui.exe` | No console window. Suitable for autostart and systray use. |
+
+## Usage
+
+### WSL
+
+1. Start Pageant or a compatible agent (e.g. gpg4win).
+2. Run:
+   ```
+   wsl-ssh-pageant-amd64.exe --wsl C:\wsl-ssh-pageant\ssh-agent.sock
+   ```
+3. In WSL, set the environment variable:
+   ```bash
+   export SSH_AUTH_SOCK=/mnt/c/wsl-ssh-pageant/ssh-agent.sock
+   ```
+4. SSH keys from Pageant are now available inside WSL.
+
+> The socket path must be under a path accessible from WSL and no longer than ~100 characters.
+>
+> **Security:** place the socket in a directory whose ACL restricts access to your user (e.g. under your user profile). Paths like `C:\wsl-ssh-pageant\` are world-readable by default, which means any local user or WSL instance can connect to the socket and use your SSH keys.
+
+### Windows native OpenSSH
+
+1. Start Pageant or a compatible agent.
+2. Run:
+   ```
+   wsl-ssh-pageant-amd64.exe --winssh ssh-pageant
+   ```
+3. Set the environment variable (or add it to your user environment variables):
+   ```
+   set SSH_AUTH_SOCK=\\.\pipe\ssh-pageant
+   ```
+4. SSH keys from Pageant are now available in `cmd.exe` and PowerShell.
+
+### Systray
+
+To show an icon in the system tray while the agent is running, use the `--systray` flag. Use the gui binary to avoid a console window:
+
 ```
-$ export SSH_AUTH_SOCK=/mnt/c/wsl-ssh-pageant/ssh-agent.sock
-```
-
-4. The SSH keys from Pageant should now be usable by `ssh`
-
-## How to use with Windows 10 native OpenSSH client
-
-1. On the Windows side start Pageant (or compatible agent such as gpg4win).
-
-2. Run `wsl-ssh-pageant.exe --winssh ssh-pageant` (or any other name)
-
-3. In `cmd` export the `SSH_AUTH_SOCK` environment variable or define it in your Environment Variables on Windows. Use the name you gave the pipe, for example:
-
-```
-$ set SSH_AUTH_SOCK=\\.\pipe\ssh-pageant
-```
-
-4. The SSH keys from Pageant should now be usable by the native Windows SSH client, try using `ssh` in `cmd.exe`
-
-## Systray Integration
-
-To add an icon to the systray run `wsl-ssh-pageant.exe --systray --winssh ssh-pageant` (or using `--wsl`).
-
-## Note
-
-You can use both `--winssh` and `--wsl` parameters at the same time with the same process to proxy for both
-
-# Frequently asked questions
-
-## How do I download it?
-Grab the latest release on the [releases page](https://github.com/benpye/wsl-ssh-pageant/releases).
-
-## How do I build this?
-For WSL support you will need Go 1.12 or later,. Go 1.12 added support for `AF_UNIX` sockets on Windows.
-
-To create the assets.go run:
-```
-go generate
-```
-
-To create a build without a console window:
-```
-go build -ldflags -H=windowsgui
+wsl-ssh-pageant-amd64-gui.exe --systray --winssh ssh-pageant
 ```
 
-## What version of Windows do I need?
-You need Windows 10 1803 or later for WSL support as it is the first version supporting `AF_UNIX` sockets. You can still use this with the native [Windows SSH client](https://github.com/PowerShell/Win32-OpenSSH/releases) on earlier builds.
+The tray icon provides a **Quit** menu entry to stop the agent cleanly.
 
-## The -gui.exe binary doesn't have a GUI? (immediately closes)
-The difference between the gui.exe binary and the regular binaries is the subsystem as set in the PE header. The gui.exe binary is set with the Win32 subsystem so that it doesn't spawn a command line, allowing it to be launched on startup. The regular binary has the console subsystem so it does launch a command line if double clicked, and will block the command line as expected. Note: You may launch either binary with the `-systray` flag to have a systray icon whilst the tool is running, this only provides a way to quit the application.
+### Running both at once
 
-## You didn't answer my question!
-Please open an issue, I do try and keep on top of them, promise.
+`--wsl` and `--winssh` can be combined in a single process:
 
-# Credit
+```
+wsl-ssh-pageant-amd64.exe --wsl C:\wsl-ssh-pageant\ssh-agent.sock --winssh ssh-pageant
+```
 
-* Thanks to [John Starks](https://github.com/jstarks/) for [npiperelay](https://github.com/jstarks/npiperelay/) for an example of a more secure way to create a stream between WSL and Linux before `AF_UNIX` sockets were available.
-* Thanks for [Mark Dietzer](https://github.com/Doridian) for several contributions to the old .NET implementation.
+## Running at login
+
+The gui zip includes `install.ps1`, which creates a shortcut in your Windows Startup folder so the agent starts automatically at login.
+
+**Install (PowerShell, run once from the extracted folder):**
+
+```powershell
+.\install.ps1
+```
+
+This creates a shortcut with `--systray --winssh ssh-pageant`. Parameters:
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `-PipeName` | Named pipe name | `ssh-pageant` |
+| `-WslSocket` | Unix socket path for WSL1 | _(none)_ |
+| `-NoSystray` | Disable tray icon | _(systray enabled)_ |
+| `-Uninstall` | Remove the shortcut | — |
+
+**Examples:**
+
+```powershell
+# Custom pipe name, no tray icon
+.\install.ps1 -PipeName my-agent -NoSystray
+
+# WSL1 socket + named pipe
+.\install.ps1 -WslSocket "C:\Users\you\ssh-agent.sock"
+
+# Remove
+.\install.ps1 -Uninstall
+```
+
+## WSL2 support
+
+WSL2 runs inside a Hyper-V VM and does not support AF_UNIX socket communication with the Windows host. The `--wsl` flag cannot work in WSL2 due to this OS-level limitation. The `--winssh` named pipe works fine and is the basis for the recommended workaround.
+
+### Workaround: socat + npiperelay
+
+On the Windows side, run as usual:
+
+```
+wsl-ssh-pageant-amd64-gui.exe --winssh ssh-pageant
+```
+
+On the WSL2 side, install [`npiperelay.exe`](https://github.com/jstarks/npiperelay/releases) and `socat`, then add to your `~/.bashrc` or `~/.zshrc`:
+
+```bash
+sudo apt install socat
+
+socat UNIX-LISTEN:/tmp/ssh-agent.sock,fork,unlink-early \
+  EXEC:"/mnt/c/Users/YOUR_USER/bin/npiperelay.exe -ei -s //./pipe/ssh-pageant" &
+
+export SSH_AUTH_SOCK=/tmp/ssh-agent.sock
+```
+
+### With systemd (WSL2 modern builds)
+
+If your WSL2 has systemd enabled (`systemd=true` in `/etc/wsl.conf`), a service unit is more reliable:
+
+```ini
+# ~/.config/systemd/user/ssh-agent.service
+[Unit]
+Description=SSH agent relay to Windows named pipe
+
+[Service]
+ExecStart=/usr/bin/socat \
+  UNIX-LISTEN:%t/ssh-agent.sock,fork \
+  EXEC:'/mnt/c/Users/YOUR_USER/bin/npiperelay.exe -ei -s //./pipe/ssh-pageant',nofork
+
+[Install]
+WantedBy=default.target
+```
+
+```bash
+systemctl --user enable --now ssh-agent
+echo 'export SSH_AUTH_SOCK=$XDG_RUNTIME_DIR/ssh-agent.sock' >> ~/.bashrc
+```
+
+## Building from source
+
+Go 1.20 or later is required.
+
+```powershell
+cd src
+go run github.com/go-bindata/go-bindata/go-bindata -pkg main -o assets.go assets/
+go build -o wsl-ssh-pageant-amd64.exe .
+go build -ldflags "-H=windowsgui" -o wsl-ssh-pageant-amd64-gui.exe .
+```
+
+## Windows version requirements
+
+- **WSL socket support (`--wsl`):** Windows 10 1803 or later (first version with `AF_UNIX` socket support).
+- **Named pipe (`--winssh`):** any Windows 10 version with the native OpenSSH client installed.
+
+## FAQ
+
+**Why does the gui binary close immediately?**
+The gui binary does not open a console window by design. Run it with `--systray` so it stays alive with a tray icon, or register it via Task Scheduler. Without `--systray` and without a blocking flag it exits immediately.
+
+**Can I use both `--wsl` and `--winssh` at the same time?**
+Yes, a single process handles both simultaneously.
+
+## Credits
+
+- [Ben Pye](https://github.com/benpye) for the first implementation of this tool.
+- [John Starks](https://github.com/jstarks/) for [npiperelay](https://github.com/jstarks/npiperelay/), an early reference for WSL↔Windows bridging.
+- [Mark Dietzer](https://github.com/Doridian) for contributions to the original .NET implementation.
